@@ -80,7 +80,8 @@ public class HumanAgent extends Agent {
                             case "PLAYING" -> ui.setStatus("Playing...");
                             default -> {
                                 if (status.startsWith("WIN")) {
-                                    String w = status.split("\\s+")[1];
+                                    String[] winParts = status.split("\\s+");
+                                    String w = (winParts.length > 1) ? winParts[1] : "?";
                                     ui.setStatus("Winner: " + w);
                                     ui.enableMove(false);
                                     ui.setThinking(false);
