@@ -23,7 +23,7 @@ public class GeminiAgent {
         if (apiKey == null || apiKey.isBlank()) {
             apiKey = System.getenv("GEMINI_API_KEY");
         }
-        String chosenModel = System.getProperty("GEMINI_MODEL", "gemini-2.5-flash-lite-preview-06-17");
+        String chosenModel = System.getProperty("GEMINI_MODEL", "gemini-2.5-flash");
         return new GeminiAgent(apiKey, chosenModel);
     }
 

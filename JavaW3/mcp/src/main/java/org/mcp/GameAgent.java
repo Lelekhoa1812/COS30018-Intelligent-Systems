@@ -3,13 +3,19 @@ package org.mcp;
 import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
+
 import java.io.FileWriter;
+import java.util.Arrays;
 
 public class GameAgent extends Agent {
-    private char[] board = {'1','2','3','4','5','6','7','8','9'};
+    private static final int SIZE = 10;
+    private final char[][] board = new char[SIZE][SIZE];
     private boolean isPlayerTurn = true;
 
+    @Override
     protected void setup() {
+        resetBoard();
+
         addBehaviour(new CyclicBehaviour(this) {
             public void action() {
                 if (isPlayerTurn) {
@@ -21,14 +27,16 @@ public class GameAgent extends Agent {
                         updateBoard();
                     }
                 } else {
-                    // Request AI move
+                    // Ask Gemini AI for move
                     ACLMessage request = new ACLMessage(ACLMessage.REQUEST);
                     request.addReceiver(getAID("gemini@platform"));
                     request.setContent(getBoardState());
                     send(request);
-                    
+
                     ACLMessage reply = blockingReceive();
-                    processAIMove(reply.getContent());
+                    if (reply != null) {
+                        processAIMove(reply.getContent());
+                    }
                     isPlayerTurn = true;
                     updateBoard();
                 }
@@ -36,25 +44,53 @@ public class GameAgent extends Agent {
         });
     }
 
+    private void resetBoard() {
+        for (char[] row : board) {
+            Arrays.fill(row, '.');
+        }
+    }
+
     private void processPlayerMove(String input) {
-        int pos = Integer.parseInt(input) - 1;
-        if (board[pos] != 'X' && board[pos] != 'O') {
-            board[pos] = 'X';
+        // Expect input as "row col"
+        String[] parts = input.trim().split("\\s+");
+        if (parts.length == 2) {
+            int r = Integer.parseInt(parts[0]);
+            int c = Integer.parseInt(parts[1]);
+            if (inBounds(r, c) && board[r][c] == '.') {
+                board[r][c] = 'X';
+            }
         }
     }
 
     private void processAIMove(String move) {
-        int pos = Integer.parseInt(move.trim()) - 1;
-        board[pos] = 'O';
+        // Expect AI move as "row col"
+        String[] parts = move.trim().split("\\s+");
+        if (parts.length == 2) {
+            int r = Integer.parseInt(parts[0]);
+            int c = Integer.parseInt(parts[1]);
+            if (inBounds(r, c) && board[r][c] == '.') {
+                board[r][c] = 'O';
+            }
+        }
+    }
+
+    private boolean inBounds(int r, int c) {
+        return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
     }
 
     private String getBoardState() {
-        return String.format("""
-            %c | %c | %c
-            ---------
-            %c | %c | %c
-            ---------
-            %c | %c | %c""", board);
+        StringBuilder sb = new StringBuilder();
+        for (int r = 0; r < SIZE; r++) {
+            for (int c = 0; c < SIZE; c++) {
+                sb.append(board[r][c]);
+                if (c < SIZE - 1) sb.append(" | ");
+            }
+            sb.append("\n");
+            if (r < SIZE - 1) {
+                sb.append("-".repeat(SIZE * 4 - 3)).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     private void updateBoard() {

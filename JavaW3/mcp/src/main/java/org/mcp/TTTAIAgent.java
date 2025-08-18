@@ -44,15 +44,25 @@ public class TTTAIAgent extends Agent {
     }
 
     private void makeMove(String board) {
-        // STRICT response to ease parsing
         String prompt = """
-            You are playing Gomoku (5-in-a-row) on a 10x10 grid as '%s'.
-            The board is row-major encoded into 100 characters: '.' empty, 'X', 'O'.
-            Coordinates are ZERO-BASED in [0..9].
-            Your task: choose a legal, strong move.
-            CRITICAL: Only respond with two integers like "row col". No text, no punctuation.
-            Current board: %s
-            """.formatted(mySymbol, board);
+        You are an expert Gomoku (Five-in-a-Row) player on a 10x10 board.
+        Rules reminder:
+        - You are playing as '%s'. The opponent is the other symbol.
+        - Board encoding: 100 characters, row-major order. '.' = empty, 'X' = player, 'O' = player.
+        - Coordinates are 0-based integers in [0..9].
+
+        Your objectives:
+        1. If you can win immediately (make 5 in a row), do so.
+        2. Otherwise, if the opponent can win immediately, block them.
+        3. Otherwise, choose a move that extends your longest line (3-4 in a row).
+        4. Otherwise, pick a move near the center or near existing stones to maximize control.
+
+        IMPORTANT:
+        - ONLY respond with the chosen move as two integers separated by a space: "row col".
+        - Do not include any explanation, text, punctuation, or formatting.
+        
+        Current board: %s
+        """.formatted(mySymbol, board);
 
         String answer = "";
         for (int attempt = 0; attempt < 4; attempt++) {
@@ -66,19 +76,19 @@ public class TTTAIAgent extends Agent {
                     send(m);
                     return;
                 }
-                prompt += "\nYour last output was invalid. Remember: ONLY 'row col' like '4 7' within [0..9].";
+                prompt += "\nReminder: ONLY output two integers like '4 7'. No other text.";
             } catch (Exception e) {
-                prompt += "\nThe last attempt failed due to an error; try again.";
+                prompt += "\nThe last attempt failed, try again.";
             }
         }
 
         // Fallback: first empty cell
-        for (int i = 0; i < Board.SIZE * Board.SIZE; i++) {
-            if (board.charAt(i) == '.') {
-                int r = i / Board.SIZE, c = i % Board.SIZE;
-                ACLMessage m = new ACLMessage(ACLMessage.INFORM);
-                m.addReceiver(new AID("game", AID.ISLOCALNAME));
-                m.setContent("MOVE " + r + " " + c);
+        for (int i=0;i<Board.SIZE*Board.SIZE;i++) {
+            if (board.charAt(i)=='.') {
+                int r=i/Board.SIZE, c=i%Board.SIZE;
+                ACLMessage m=new ACLMessage(ACLMessage.INFORM);
+                m.addReceiver(new AID("game",AID.ISLOCALNAME));
+                m.setContent("MOVE "+r+" "+c);
                 send(m);
                 return;
             }
