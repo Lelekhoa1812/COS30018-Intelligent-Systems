@@ -15,23 +15,21 @@ public class GameMasterAgent extends Agent {
 
     private Mode mode = Mode.PVC;
 
-    private AID playerX;   // whoever is 'X' (Human or Human1)
-    private AID playerO;   // whoever is 'O' (AI or Human2)
-    private AID human1;    // first registered human
-    private AID human2;    // second registered human (PvP)
-    private AID ai;        // AI agent (PvC)
+    private AID playerX;   // 'X'
+    private AID playerO;   // 'O'
+    private AID human1;
+    private AID human2;
+    private AID ai;        // only in PVC
 
     private char current = 'X';
     private boolean started = false;
 
     @Override
     protected void setup() {
-        // Read mode from args
         Object[] args = getArguments();
         if (args != null && args.length > 0) {
             String m = String.valueOf(args[0]).trim().toUpperCase();
-            if (m.equals("PVP")) mode = Mode.PVP;
-            else mode = Mode.PVC;
+            mode = m.equals("PVP") ? Mode.PVP : Mode.PVC;
         }
         System.out.println(getLocalName() + " mode = " + mode);
 
@@ -41,7 +39,7 @@ public class GameMasterAgent extends Agent {
                 ACLMessage msg = receive();
                 if (msg == null) { block(); return; }
                 String content = msg.getContent();
-                if (content == null) { return; }
+                if (content == null) return;
 
                 if ("REGISTER HUMAN".equals(content)) {
                     if (human1 == null) human1 = msg.getSender();
@@ -77,13 +75,8 @@ public class GameMasterAgent extends Agent {
     }
 
     private void assignPlayers(AID a, AID b) {
-        // Randomly assign X and O
-        if (rnd.nextBoolean()) {
-            playerX = a; playerO = b;
-        } else {
-            playerX = b; playerO = a;
-        }
-        // Notify each their symbol
+        if (rnd.nextBoolean()) { playerX = a; playerO = b; }
+        else { playerX = b; playerO = a; }
         sendAssign(playerX, 'X');
         sendAssign(playerO, 'O');
     }
@@ -99,12 +92,11 @@ public class GameMasterAgent extends Agent {
         started = true;
         board.reset();
         current = rnd.nextBoolean() ? 'X' : 'O';
-        broadcastState("NEW");
+        broadcastState("NEW", null);
         requestMove();
     }
 
     private void handleMove(ACLMessage msg, String content) {
-        // MOVE r c
         String[] parts = content.split("\\s+");
         if (parts.length < 3) return;
         int r, c;
@@ -112,32 +104,33 @@ public class GameMasterAgent extends Agent {
             r = Integer.parseInt(parts[1]);
             c = Integer.parseInt(parts[2]);
         } catch (NumberFormatException e) {
-            // malformed
             requestMoveTo(msg.getSender(), "Bad format. Use: row col");
             return;
         }
 
-        // Determine which symbol the sender is
         char p = senderSymbol(msg.getSender());
-        if (p == '?') return; // unregistered
+        if (p == '?') return;
 
-        // Enforce turn
         if (p != current) {
             requestMoveTo(msg.getSender(), "Not your turn.");
             return;
         }
 
         if (board.play(r, c, p)) {
-            broadcastState("PLAYING");
+            // If AI was thinking, stop spinner now
+            if (mode == Mode.PVC && msg.getSender().equals(ai)) broadcastThink(false);
+
+            broadcastState("PLAYING", null);
 
             char w = board.winner();
             if (w != '.') {
-                broadcastState("WIN " + w);
-                started = false; // end
+                int[][] winLine = board.getLastWinLine();
+                broadcastState("WIN " + w, winLine);
+                started = false;
                 return;
             }
             if (board.isFull()) {
-                broadcastState("DRAW");
+                broadcastState("DRAW", null);
                 started = false;
                 return;
             }
@@ -156,30 +149,49 @@ public class GameMasterAgent extends Agent {
 
     private void requestMove() {
         AID target = (current == 'X') ? playerX : playerO;
+
+        // If AI's turn in PVC mode → start spinner
+        if (mode == Mode.PVC && target.equals(ai)) broadcastThink(true);
+
         requestMoveTo(target, "Your turn (" + current + ")");
     }
 
     private void requestMoveTo(AID target, String note) {
         ACLMessage req = new ACLMessage(ACLMessage.REQUEST);
         req.addReceiver(target);
-        req.setContent("REQUEST_MOVE " + board.serialize() + " " + current + " " + note);
+        req.setContent("REQUEST_MOVE " + board.serialize() + " " + current + " " + note.replace(' ', '_'));
         send(req);
     }
 
-    private void broadcastState(String status) {
-        String payload = "STATE " + board.serialize() + " " + status;
-
+    private void broadcastThink(boolean start) {
+        String payload = start ? "THINK START" : "THINK STOP";
         if (playerX != null) {
             ACLMessage mX = new ACLMessage(ACLMessage.INFORM);
-            mX.addReceiver(playerX);
-            mX.setContent(payload);
-            send(mX);
+            mX.addReceiver(playerX); mX.setContent(payload); send(mX);
         }
         if (playerO != null) {
             ACLMessage mO = new ACLMessage(ACLMessage.INFORM);
-            mO.addReceiver(playerO);
-            mO.setContent(payload);
-            send(mO);
+            mO.addReceiver(playerO); mO.setContent(payload); send(mO);
+        }
+    }
+
+    private void broadcastState(String status, int[][] winLine) {
+        StringBuilder sb = new StringBuilder("STATE ").append(board.serialize()).append(' ').append(status);
+        if (winLine != null && winLine.length == Board.WIN_LEN) {
+            sb.append(" LINE");
+            for (int i = 0; i < Board.WIN_LEN; i++) {
+                sb.append(' ').append(winLine[i][0]).append(' ').append(winLine[i][1]);
+            }
+        }
+        String payload = sb.toString();
+
+        if (playerX != null) {
+            ACLMessage mX = new ACLMessage(ACLMessage.INFORM);
+            mX.addReceiver(playerX); mX.setContent(payload); send(mX);
+        }
+        if (playerO != null) {
+            ACLMessage mO = new ACLMessage(ACLMessage.INFORM);
+            mO.addReceiver(playerO); mO.setContent(payload); send(mO);
         }
     }
 }
