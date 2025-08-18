@@ -1,0 +1,10 @@
+package org.mcp;
+
+import jade.core.Agent;
+
+public class TestAgent extends Agent {
+    protected void setup() {
+        System.out.println("Success! Running on Java " + 
+            System.getProperty("java.version"));
+    }
+}

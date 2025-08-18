@@ -1,0 +1,13 @@
+module MCP {
+    // Required modules
+    requires java.desktop;  // For GUI components
+    requires java.logging;  // For logging
+    
+    // JADE module requirements
+    requires transitive jade.core;
+    requires transitive jade.wrapper;
+    requires transitive jade.lang.acl;
+    
+    // Open your package to JADE
+    opens org.mcp to jade.core;
+}

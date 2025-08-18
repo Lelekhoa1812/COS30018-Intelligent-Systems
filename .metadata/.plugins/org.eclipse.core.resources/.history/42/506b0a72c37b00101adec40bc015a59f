@@ -1,0 +1,33 @@
+package org.mcp;
+
+import jade.core.Profile;
+import jade.core.ProfileImpl;
+import jade.core.Runtime;
+import jade.wrapper.AgentController;
+import jade.wrapper.ContainerController;
+
+public class MainContainer {
+    public static void main(String[] args) throws Exception {
+        Runtime rt = Runtime.instance();
+        Profile p = new ProfileImpl();
+        p.setParameter(Profile.GUI, "true");
+        
+        ContainerController cc = rt.createMainContainer(p);
+        
+        // Start Gemini Agent
+        AgentController gemini = cc.createNewAgent(
+            "gemini",
+            "org.mcp.GeminiAgent",
+            new Object[]{}
+        );
+        gemini.start();
+        
+        // Start Game Agent
+        AgentController game = cc.createNewAgent(
+            "game",
+            "org.mcp.GameAgent",
+            new Object[]{}
+        );
+        game.start();
+    }
+}

@@ -1,0 +1,60 @@
+package org.mcp;
+
+import jade.core.Agent;
+import jade.core.behaviours.CyclicBehaviour;
+import jade.lang.acl.ACLMessage;
+import io.github.cdimascio.dotenv.Dotenv;
+import com.google.cloud.vertexai.VertexAI;
+import com.google.cloud.vertexai.generativeai.GenerativeModel;
+import com.google.cloud.vertexai.generativeai.ContentMaker;
+import com.google.cloud.vertexai.generativeai.PartMaker;
+import com.google.cloud.vertexai.api.GenerateContentResponse;
+
+public class GeminiAgent extends Agent {
+    private GenerativeModel model;
+    private VertexAI vertexAi;
+
+    protected void setup() {
+        Dotenv dotenv = Dotenv.configure().load();
+        String apiKey = dotenv.get("GEMINI_API");
+        
+        vertexAi = new VertexAI.Builder()
+            .setProject("your-project-id")  // Add your Google Cloud project ID
+            .setLocation("us-central1")     // Add your location
+            .setApiKey(apiKey)
+            .build();
+        
+        model = new GenerativeModel("gemini-1.5-flash", vertexAi);
+
+        addBehaviour(new CyclicBehaviour(this) {
+            public void action() {
+                ACLMessage msg = receive();
+                if (msg != null) {
+                    String prompt = msg.getContent();
+                    String move = getAIMove(prompt);
+                    
+                    ACLMessage reply = msg.createReply();
+                    reply.setPerformative(ACLMessage.INFORM);
+                    reply.setContent(move);
+                    send(reply);
+                } else {
+                    block();
+                }
+            }
+        });
+    }
+
+    private String getAIMove(String prompt) {
+        try {
+            GenerateContentResponse response = model.generateContent(
+                ContentMaker.fromMultiModalData(
+                    PartMaker.fromText("You are a TicTacToe AI. Current board:\n" + prompt + 
+                                    "\nRespond ONLY with the move position (1-9):")
+                )
+            );
+            return response.getCandidates(0).getContent().getParts(0).getText();
+        } catch (Exception e) {
+            return "Error: " + e.getMessage();
+        }
+    }
+}

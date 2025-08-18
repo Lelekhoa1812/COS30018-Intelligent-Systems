@@ -1,0 +1,6 @@
+module MCP {
+    requires java.desktop;
+    requires java.logging;
+    requires jade;
+    opens org.mcp to jade, java.desktop;
+}

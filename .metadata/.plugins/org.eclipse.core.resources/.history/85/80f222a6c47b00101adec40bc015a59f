@@ -1,0 +1,9 @@
+module MCP {
+    requires java.desktop;
+    requires java.logging;
+    requires jade;
+    requires dotenv.java;
+    requires google.cloud.vertexai;
+    
+    opens org.mcp to jade, java.desktop;
+}

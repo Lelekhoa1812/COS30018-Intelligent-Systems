@@ -1,0 +1,11 @@
+module MCP {
+    // List all automatic modules JADE depends on
+    requires java.desktop;
+    requires java.logging;
+    
+    // Required for JADE (automatic module name from the JAR filename)
+    requires jade;  // Derived from 'jade.jar'
+    
+    // Open your package to JADE and its dependencies
+    opens org.mcp to jade, java.desktop;
+}
