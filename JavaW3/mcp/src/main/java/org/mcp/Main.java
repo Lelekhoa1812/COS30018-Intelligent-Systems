@@ -9,8 +9,7 @@ import io.github.cdimascio.dotenv.Dotenv;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        //        String apiKey = System.getenv("GOOGLE_API_KEY");
-        String apiKey = "AIzaSyAKWdP8If6GmCk3m36IUJDGSYBfHa_Vqwk";
+        String apiKey = System.getenv("GOOGLE_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
             apiKey = System.getenv("GOOGLE_API_KEY");
         }
