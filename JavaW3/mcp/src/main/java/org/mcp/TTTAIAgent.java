@@ -63,7 +63,6 @@ public class TTTAIAgent extends Agent {
                     String board = parts[1]; // 100 chars of . X O
                     // parts[2] == whose turn; we already know it's ours when we get this
                     System.out.println("\n=== AI TURN (" + mySymbol + ") ===");
-                    dumpBoard(board);
                     makeMove(board);
                 }
             }
@@ -91,21 +90,23 @@ public class TTTAIAgent extends Agent {
             play(block[0], block[1]); return;
         }
 
-        // 2) Score all candidates using pattern heuristics
+        // 2) Score all candidates
         List<ScoredMove> scored = new ArrayList<>();
         for (int[] rc : empties) {
             long score = evaluatePlacement(board, rc[0], rc[1], me, opp);
             scored.add(new ScoredMove(rc[0], rc[1], score));
         }
         if (scored.isEmpty()) {
-            // Extremely unlikely, but just in case
             int[] fallback = firstEmpty(board);
-            if (fallback != null) { play(fallback[0], fallback[1]); }
+            if (fallback != null) play(fallback[0], fallback[1]);
             return;
         }
-
-        // Sort by score desc
         scored.sort((a, b) -> Long.compare(b.score, a.score));
+
+        // keep only top-N before Gemini
+        int PRUNE_N = 20;
+        if (scored.size() > PRUNE_N) scored = scored.subList(0, PRUNE_N);
+
         System.out.println("[AI] Top candidate scores:");
         for (int i=0;i<Math.min(10,scored.size());i++) {
             ScoredMove sm = scored.get(i);
@@ -310,92 +311,47 @@ public class TTTAIAgent extends Agent {
 
     // ======= LLM shortlist selection =======
     private int[] chooseMoveWithGemini(String board, char me, char opp, List<ScoredMove> topK) {
-        // Compose a compact, structured shortlist with features (length/open-ends per dir) for transparency
         StringBuilder shortlist = new StringBuilder();
-        shortlist.append("CANDIDATES:\n");
-        int idx = 0;
-        for (ScoredMove sm : topK) {
-            // Summarise features for each direction to help reasoning
-            int[][] dirs = {{0,1},{1,0},{1,1},{1,-1}};
-            StringBuilder feats = new StringBuilder();
-            for (int[] d : dirs) {
-                LineFeat fMe = lineFeatures(board, sm.r, sm.c, d[0], d[1], me);
-                LineFeat fOp = lineFeatures(board, sm.r, sm.c, d[0], d[1], opp);
-                feats.append(String.format(Locale.ROOT,
-                        " dir(%+d,%+d): me{len=%d,open=%d} opp{len=%d,open=%d};",
-                        d[0], d[1], fMe.length, fMe.openEnds, fOp.length, fOp.openEnds));
-            }
-            shortlist.append(String.format(Locale.ROOT,
-                    " [%d] r=%d c=%d score=%d;%s\n", idx++, sm.r, sm.c, sm.score, feats));
+        for (int i=0; i<topK.size(); i++) {
+            ScoredMove sm = topK.get(i);
+            shortlist.append(String.format("[%d] %d %d score=%d%n", i, sm.r, sm.c, sm.score));
         }
 
-        String sysPrompt = """
-            You are an expert Gomoku (10x10 Five-in-a-Row) analyst.
-            You must pick ONE move from the provided shortlist that maximizes the chance to win.
-            PRIORITY (highest to lowest):
-            1) Make an immediate 5-in-a-row to win.
-            2) Block opponent's immediate 5-in-a-row.
-            3) Create a double-threat (two open-3 in different directions) or create an open-4.
-            4) Block opponent's double-threat or open-4.
-            5) Extend your longest chain with the most open ends; favor center/adjacency when equal.
+        String prompt = """
+        You are playing Gomoku (10x10, Five-in-a-Row) as '%s'.
+        Opponent is '%s'.
+        Candidates (row col score):
+        %s
+        Pick the single best move.
+        STRICT: output only "row col".
+        """.formatted(me, opp, shortlist);
 
-            STRICT OUTPUT: Only return "row col" as two integers in [0..9]. No other text.
-            """;
+        System.out.println("[AI] Gemini prompt:\n" + prompt);
 
-        String userPrompt = """
-            Board (row-major, '.' empty, 'X','O'):
-            %s
-
-            You play as '%s'. Opponent is '%s'.
-            %s
-
-            Choose ONE candidate and output only: "row col"
-            """.formatted(board, me, opp, shortlist.toString());
-
-        String fullPrompt = sysPrompt + "\n" + userPrompt;
-
-        String answer = "";
-        for (int attempt = 0; attempt < 3; attempt++) {
-            try {
-                answer = gemini.complete(fullPrompt);
-                System.out.println("[AI] Gemini raw response: " + answer);
-                int[] rc = parseRC(answer);
-                if (rc != null && inBounds(rc[0], rc[1]) && isEmpty(board, rc[0], rc[1])) {
-                    return rc;
-                }
-                fullPrompt += "\nReminder: ONLY output two integers like '4 7'. No other text.";
-            } catch (Exception e) {
-                fullPrompt += "\nAn error occurred; retry and pick the single best candidate.";
-            }
+        try {
+            String answer = gemini.complete(prompt);
+            System.out.println("[AI] Gemini response: " + answer);
+            return parseRC(answer);
+        } catch (Exception e) {
+            System.out.println("[AI] Gemini error: " + e.getMessage());
+            return null;
         }
-        return null;
     }
 
     // === utilities ===
-    private static void dumpBoard(String board) {
-        for (int r=0;r<SIZE;r++) {
-            for (int c=0;c<SIZE;c++) {
-                System.out.print(board.charAt(r*SIZE+c)+" ");
-            }
-            System.out.println();
-        }
-    }
-
     private static int[] parseRC(String text) {
         if (text == null) return null;
         String t = text.trim();
-        // "r c"
-        Matcher m = Pattern.compile("^\\s*([0-9])\\s+([0-9])\\s*$").matcher(t);
-        if (m.matches()) {
-            return new int[]{ Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) };
-        }
-        // "r,c"
-        m = Pattern.compile("^\\s*([0-9])\\s*,\\s*([0-9])\\s*$").matcher(t);
-        if (m.matches()) {
-            return new int[]{ Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) };
+        // Match one- or two-digit row/col
+        Matcher m = Pattern.compile("\\b([0-9]{1,2})\\D+([0-9]{1,2})\\b").matcher(t);
+        if (m.find()) {
+            int r = Integer.parseInt(m.group(1));
+            int c = Integer.parseInt(m.group(2));
+            return new int[]{r, c};
         }
         return null;
     }
+
 
     // ======= helpers =======
     private static class ScoredMove {

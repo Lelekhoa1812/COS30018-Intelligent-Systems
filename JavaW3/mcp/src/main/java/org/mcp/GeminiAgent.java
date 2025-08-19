@@ -14,7 +14,7 @@ public class GeminiAgent {
         // The Client automatically picks up GEMINI_API_KEY / GOOGLE_API_KEY
         this.client = Client.builder().apiKey(apiKey).build();
         this.model = (model == null || model.isBlank())
-                ? "gemini-2.5-flash-lite-preview-06-17"
+                ? "gemini-2.5-flash"
                 : model;
     }
 
